@@ -45,8 +45,15 @@ body {
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   padding: 12px 14px;
+}
+
+.header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .logo {
@@ -168,9 +175,19 @@ body {
 }
 
 .cta {
+  border: none;
+  background: transparent;
   color: #34d399;
   font-weight: 700;
   font-size: 1.4rem;
+  cursor: pointer;
+  position: relative;
+  transition: transform 120ms ease, color 120ms ease;
+}
+
+.cta-clicked {
+  animation: cta-pop 260ms ease;
+  color: #6ee7b7;
 }
 
 .empty,
@@ -192,8 +209,76 @@ body {
   font-size: 0.9rem;
 }
 
+.queue-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.12);
+  color: #d1fae5;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.2);
+}
+
+.queue-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #10b981;
+  color: #0b1224;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.queue-card {
+  padding: 14px;
+}
+
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.queue-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.ghost-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #e5e7eb;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 .sentinel {
   height: 1px;
+}
+
+@keyframes cta-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @media (min-width: 720px) {

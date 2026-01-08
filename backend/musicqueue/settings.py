@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
+    "musicqueue",
 ]
 
 MIDDLEWARE = [

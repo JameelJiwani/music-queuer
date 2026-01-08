@@ -1,8 +1,10 @@
 from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 from django.conf import settings
+from .models import Queue, Song
 import httpx
 import uuid
+import json
 
 API_BASE = "https://www.qobuz.com/api.json/0.2"
 DEFAULT_LIMIT = 20
@@ -41,6 +43,34 @@ def _normalize_track(track: dict) -> dict:
         "album": album.get("title"),
         "cover": cover,
     }
+
+
+def _serialize_queue_item(item: Song) -> dict:
+    return {
+        "id": item.track_id,
+        "title": item.title,
+        "artist": item.artist,
+        "album": item.album,
+        "cover": item.cover,
+        "queued_id": item.id,
+        "created_at": item.created_at.isoformat(),
+        "queue_id": item.queue_id,
+    }
+
+
+def _get_queue(request, payload: dict | None = None) -> Queue:
+    queue_id = request.GET.get("queue_id") if request else None
+    if not queue_id and payload:
+        queue_id = payload.get("queue_id")
+    if queue_id:
+        return Queue.objects.get(id=queue_id)
+
+    queue_name = request.GET.get("queue") if request else None
+    if not queue_name and payload:
+        queue_name = payload.get("queue")
+    queue_name = (queue_name or "Default").strip() or "Default"
+    queue, _ = Queue.objects.get_or_create(name=queue_name)
+    return queue
 
 
 @require_GET
@@ -88,3 +118,39 @@ def search(request) -> JsonResponse:
 
     normalized = [_normalize_track(track) for track in items]
     return JsonResponse({"items": normalized, "total": total})
+
+
+@require_GET
+def queue_list(request) -> JsonResponse:
+    queue = _get_queue(request)
+    items = queue.songs.all()
+    return JsonResponse({"items": [_serialize_queue_item(item) for item in items], "queue_id": queue.id})
+
+
+@require_http_methods(["POST"])
+def queue_add(request) -> JsonResponse:
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    queue = _get_queue(request, payload)
+    title = (payload.get("title") or "").strip()
+    artist = (payload.get("artist") or "").strip()
+    if not title or not artist:
+        return JsonResponse({"error": "Both 'title' and 'artist' are required."}, status=400)
+
+    track_id = (payload.get("id") or payload.get("track_id") or str(uuid.uuid4())).strip()
+    album = (payload.get("album") or "").strip() or None
+    cover = (payload.get("cover") or "").strip() or None
+
+    item = Song.objects.create(
+        queue=queue,
+        track_id=track_id,
+        title=title,
+        artist=artist,
+        album=album,
+        cover=cover,
+    )
+
+    return JsonResponse({"item": _serialize_queue_item(item), "queue_id": queue.id}, status=201)
