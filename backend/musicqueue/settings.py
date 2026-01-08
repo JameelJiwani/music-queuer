@@ -16,6 +16,12 @@ QOBUZ_APP_ID = os.getenv("QOBUZ_APP_ID")
 if not QOBUZ_APP_ID:
     raise RuntimeError("QOBUZ_APP_ID must be set for Qobuz access.")
 
+POSTGRES_DB = os.getenv("POSTGRES_DB", "musicqueue")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "musicqueue")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "changeme")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+
 INSTALLED_APPS = [
     "corsheaders",
     "django.contrib.contenttypes",
@@ -35,8 +41,12 @@ WSGI_APPLICATION = "musicqueue.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": POSTGRES_DB,
+        "USER": POSTGRES_USER,
+        "PASSWORD": POSTGRES_PASSWORD,
+        "HOST": POSTGRES_HOST,
+        "PORT": POSTGRES_PORT,
     }
 }
 
