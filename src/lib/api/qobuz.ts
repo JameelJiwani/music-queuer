@@ -1,9 +1,26 @@
 /// <reference types="vite/client" />
 
+export type TrackResult = {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string | null;
+  cover?: string | null;
+};
+
+export type SearchResponse = {
+  items: TrackResult[];
+  total: number;
+};
+
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? 'http://127.0.0.1:8080';
 const DEFAULT_LIMIT = 20;
 
-export async function searchTracks(query, offset = 0, limit = DEFAULT_LIMIT) {
+export async function searchTracks(
+  query: string,
+  offset = 0,
+  limit = DEFAULT_LIMIT
+): Promise<SearchResponse> {
   if (!query?.trim()) {
     return { items: [], total: 0 };
   }
@@ -21,19 +38,17 @@ export async function searchTracks(query, offset = 0, limit = DEFAULT_LIMIT) {
     throw new Error('Failed to reach the search backend.');
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as { items?: TrackResult[]; total?: number };
   const items = Array.isArray(data.items) ? data.items : [];
-  const total = Number.isFinite(data.total) ? data.total : items.length;
+  const total = Number.isFinite(data.total) ? (data.total as number) : items.length;
 
-  // Normalize defensively in case backend omits fields
   const normalized = items.map((track) => ({
-    id: track.id || (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+    id: track.id || (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
     title: track.title || 'Unknown title',
     artist: track.artist || 'Unknown artist',
-    album: track.album,
-    cover: track.cover
+    album: track.album ?? undefined,
+    cover: track.cover ?? undefined
   }));
 
   return { items: normalized, total };
 }
-
