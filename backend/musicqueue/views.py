@@ -1,7 +1,7 @@
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 from django.conf import settings
-from .models import QueuedTrack
+from .models import Queue, Song
 import httpx
 import uuid
 import json
@@ -45,7 +45,7 @@ def _normalize_track(track: dict) -> dict:
     }
 
 
-def _serialize_queue_item(item: QueuedTrack) -> dict:
+def _serialize_queue_item(item: Song) -> dict:
     return {
         "id": item.track_id,
         "title": item.title,
@@ -54,7 +54,23 @@ def _serialize_queue_item(item: QueuedTrack) -> dict:
         "cover": item.cover,
         "queued_id": item.id,
         "created_at": item.created_at.isoformat(),
+        "queue_id": item.queue_id,
     }
+
+
+def _get_queue(request, payload: dict | None = None) -> Queue:
+    queue_id = request.GET.get("queue_id") if request else None
+    if not queue_id and payload:
+        queue_id = payload.get("queue_id")
+    if queue_id:
+        return Queue.objects.get(id=queue_id)
+
+    queue_name = request.GET.get("queue") if request else None
+    if not queue_name and payload:
+        queue_name = payload.get("queue")
+    queue_name = (queue_name or "Default").strip() or "Default"
+    queue, _ = Queue.objects.get_or_create(name=queue_name)
+    return queue
 
 
 @require_GET
@@ -105,9 +121,10 @@ def search(request) -> JsonResponse:
 
 
 @require_GET
-def queue_list(_: object) -> JsonResponse:
-    items = QueuedTrack.objects.all()
-    return JsonResponse({"items": [_serialize_queue_item(item) for item in items]})
+def queue_list(request) -> JsonResponse:
+    queue = _get_queue(request)
+    items = queue.songs.all()
+    return JsonResponse({"items": [_serialize_queue_item(item) for item in items], "queue_id": queue.id})
 
 
 @require_http_methods(["POST"])
@@ -117,6 +134,7 @@ def queue_add(request) -> JsonResponse:
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON payload."}, status=400)
 
+    queue = _get_queue(request, payload)
     title = (payload.get("title") or "").strip()
     artist = (payload.get("artist") or "").strip()
     if not title or not artist:
@@ -126,7 +144,8 @@ def queue_add(request) -> JsonResponse:
     album = (payload.get("album") or "").strip() or None
     cover = (payload.get("cover") or "").strip() or None
 
-    item = QueuedTrack.objects.create(
+    item = Song.objects.create(
+        queue=queue,
         track_id=track_id,
         title=title,
         artist=artist,
@@ -134,4 +153,4 @@ def queue_add(request) -> JsonResponse:
         cover=cover,
     )
 
-    return JsonResponse({"item": _serialize_queue_item(item)}, status=201)
+    return JsonResponse({"item": _serialize_queue_item(item), "queue_id": queue.id}, status=201)
