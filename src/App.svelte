@@ -1,17 +1,17 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
-  import { searchTracks } from '$lib/api/qobuz.js';
+  import { searchTracks, type TrackResult } from '$lib/api/qobuz';
 
   const PAGE_SIZE = 20;
 
   let query = '';
-  let tracks = [];
+  let tracks: TrackResult[] = [];
   let total = 0;
   let loading = false;
   let error = '';
   let hasMore = false;
-  let sentinel;
-  let debounceHandle;
+  let sentinel: HTMLDivElement | null = null;
+  let debounceHandle: ReturnType<typeof setTimeout> | null = null;
 
   async function fetchTracks(reset = false) {
     if (!query.trim()) {
@@ -33,7 +33,7 @@
       total = nextTotal;
       hasMore = tracks.length < total;
     } catch (err) {
-      error = err?.message ?? 'Something went wrong while searching.';
+      error = err instanceof Error ? err.message : 'Something went wrong while searching.';
       if (reset) {
         tracks = [];
         total = 0;
@@ -44,9 +44,12 @@
     }
   }
 
-  function handleInput(event) {
-    query = event.target.value;
-    clearTimeout(debounceHandle);
+  function handleInput(event: Event) {
+    const target = event.target as HTMLInputElement | null;
+    query = target?.value ?? '';
+    if (debounceHandle) {
+      clearTimeout(debounceHandle);
+    }
     debounceHandle = setTimeout(() => fetchTracks(true), 350);
   }
 
@@ -106,7 +109,7 @@
             {/if}
             <div class="meta">
               <p class="name">{track.title}</p>
-              <p class="artist">{track.artist}{track.album ? ` · ${track.album}` : ''}</p>
+              <p class="artist">{track.artist}{track.album ? ` - ${track.album}` : ''}</p>
             </div>
             <div class="cta">+</div>
           </article>
@@ -120,4 +123,3 @@
     <div class="sentinel" bind:this={sentinel}></div>
   </section>
 </main>
-
