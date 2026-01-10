@@ -21,7 +21,7 @@
   let clickedId: string | null = null;
   let clickTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  async function fetchTracks(reset = false) {
+  const fetchTracks = async (reset = false) => {
     if (!query.trim()) {
       tracks = [];
       total = 0;
@@ -50,9 +50,9 @@
     } finally {
       loading = false;
     }
-  }
+  };
 
-  async function loadQueue(silent = false) {
+  const loadQueue = async (silent = false) => {
     if (queueLoading) return;
     queueLoading = true;
     if (!silent) queueError = '';
@@ -65,9 +65,9 @@
     } finally {
       queueLoading = false;
     }
-  }
+  };
 
-  async function addToQueue(track: TrackResult) {
+  const addToQueue = async (track: TrackResult) => {
     try {
       const item = await addQueueItem(track);
       queue = [...queue, item];
@@ -83,16 +83,16 @@
     clickTimeout = setTimeout(() => {
       if (clickedId === track.id) clickedId = null;
     }, 320);
-  }
+  };
 
-  function handleInput(event: Event) {
+  const handleInput = (event: Event) => {
     const target = event.target as HTMLInputElement | null;
     query = target?.value ?? '';
     if (debounceHandle) {
       clearTimeout(debounceHandle);
     }
     debounceHandle = setTimeout(() => fetchTracks(true), 350);
-  }
+  };
 
   onMount(() => {
     const observer = new IntersectionObserver(
@@ -111,12 +111,12 @@
     return () => observer.disconnect();
   });
 
-  $: if (view !== lastView) {
+  $: if (view !== lastView) async () =>   {
     if (view === 'queue') {
-      loadQueue();
+      await loadQueue();
     }
     lastView = view;
-  }
+  };
 </script>
 
 <main class="page">

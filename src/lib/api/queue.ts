@@ -13,7 +13,7 @@ export type QueueRef = {
   name?: string;
 };
 
-function buildQueueParams(queue?: QueueRef): string {
+const buildQueueParams = (queue?: QueueRef): string => {
   if (!queue) return '';
   const params = new URLSearchParams();
   if (queue.id) params.set('queue_id', String(queue.id));
@@ -22,7 +22,7 @@ function buildQueueParams(queue?: QueueRef): string {
   return query ? `?${query}` : '';
 }
 
-export async function fetchQueue(queue?: QueueRef): Promise<QueueItem[]> {
+export const fetchQueue = async (queue?: QueueRef): Promise<QueueItem[]> => {
   const res = await fetch(`${API_BASE}/queue${buildQueueParams(queue)}`);
   if (!res.ok) {
     throw new Error('Failed to load queued songs.');
@@ -32,7 +32,7 @@ export async function fetchQueue(queue?: QueueRef): Promise<QueueItem[]> {
   return Array.isArray(data.items) ? data.items : [];
 }
 
-export async function addQueueItem(track: TrackResult, queue?: QueueRef): Promise<QueueItem> {
+export const addQueueItem = async (track: TrackResult, queue?: QueueRef): Promise<QueueItem> => {
   const res = await fetch(`${API_BASE}/queue/add`, {
     method: 'POST',
     headers: {

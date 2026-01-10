@@ -16,11 +16,11 @@ export type SearchResponse = {
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? 'http://127.0.0.1:8080';
 const DEFAULT_LIMIT = 20;
 
-export async function searchTracks(
+export const searchTracks = async (
   query: string,
   offset = 0,
   limit = DEFAULT_LIMIT
-): Promise<SearchResponse> {
+): Promise<SearchResponse> => {
   if (!query?.trim()) {
     return { items: [], total: 0 };
   }
