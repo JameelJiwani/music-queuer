@@ -1,7 +1,16 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { searchTracks, type TrackResult } from '$lib/api/qobuz';
-  import { addQueueItem, fetchQueue, removeQueueItem, type QueueItem } from '$lib/api/queue';
+  import {
+    addQueueItem,
+    fetchQueue,
+    removeQueueItem,
+    subscribeQueue,
+    type QueueInfo,
+    type QueueItem,
+    type QueueRef,
+    type QueueStreamEvent
+  } from '$lib/api/queue';
   import TrackList from '$lib/components/TrackList.svelte';
 
   const PAGE_SIZE = 20;
@@ -9,6 +18,8 @@
   let query = '';
   let tracks: TrackResult[] = [];
   let queue: QueueItem[] = [];
+  let queueInfo: QueueInfo | null = null;
+  let queueRef: QueueRef | undefined = undefined;
   let view: 'search' | 'queue' = 'search';
   let lastView: 'search' | 'queue' = 'search';
   let queueLoading = false;
@@ -21,8 +32,12 @@
   let debounceHandle: ReturnType<typeof setTimeout> | null = null;
   let clickedId: string | null = null;
   let clickTimeout: ReturnType<typeof setTimeout> | null = null;
+  let queueStream: EventSource | null = null;
   const queueKey = (track: TrackResult, index: number) => `${track.id}-${index}`;
   $: queuedIds = queue.map((item) => item.id);
+  $: shareUrl = (queueInfo?.code || queueRef?.code)
+    ? `${window.location.origin}${window.location.pathname}?code=${queueInfo?.code || queueRef?.code}`
+    : '';
 
   const fetchTracks = async (reset = false) => {
     if (!query.trim()) {
@@ -55,12 +70,39 @@
     }
   };
 
+  const connectQueueStream = () => {
+    queueStream?.close();
+    if (!queueRef) return;
+
+    queueStream = subscribeQueue(queueRef, (event: QueueStreamEvent) => {
+      if (event.type === 'init') {
+        queueInfo = { id: event.queue_id, code: event.code, name: event.name };
+        queueRef = { id: event.queue_id, code: event.code, name: event.name };
+        return;
+      }
+      if (event.type === 'add' && event.item) {
+        const exists = queue.find((item) => item.queued_id === event.item.queued_id);
+        if (!exists) {
+          queue = [...queue, event.item];
+        }
+        return;
+      }
+      if (event.type === 'remove') {
+        queue = queue.filter((item) => item.queued_id !== event.queued_id);
+      }
+    });
+  };
+
   const loadQueue = async (silent = false) => {
     if (queueLoading) return;
     queueLoading = true;
     if (!silent) queueError = '';
     try {
-      queue = await fetchQueue();
+      const { items, queue: info } = await fetchQueue(queueRef);
+      queue = items;
+      queueInfo = info;
+      queueRef = { id: info.id, code: info.code, name: info.name };
+      connectQueueStream();
     } catch (err) {
       if (!silent) {
         queueError = err instanceof Error ? err.message : 'Failed to load the queue.';
@@ -72,8 +114,11 @@
 
   const addToQueue = async (track: TrackResult) => {
     try {
-      const item = await addQueueItem(track);
-      queue = [...queue, item];
+      const item = await addQueueItem(track, queueRef);
+      const exists = queue.some((q) => q.queued_id === item.queued_id);
+      if (!exists) {
+        queue = [...queue, item];
+      }
     } catch (err) {
       queueError = err instanceof Error ? err.message : 'Failed to add song to the queue.';
       return;
@@ -93,7 +138,7 @@
     if (!item) return;
 
     try {
-      await removeQueueItem(item);
+      await removeQueueItem(item, queueRef);
       queue = queue.filter((queued) => queued.queued_id !== item.queued_id);
     } catch (err) {
       queueError = err instanceof Error ? err.message : 'Failed to remove song from the queue.';
@@ -109,7 +154,35 @@
     debounceHandle = setTimeout(() => fetchTracks(true), 350);
   };
 
+  const copyShareLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch (err) {
+      queueError = err instanceof Error ? err.message : 'Failed to copy share link.';
+    }
+  };
+
+  const generateCode = (length = 8) => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    return Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+  };
+
   onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get('code');
+    const queueNameParam = params.get('queue');
+    if (codeParam) {
+      queueRef = { code: codeParam };
+    } else if (queueNameParam) {
+      queueRef = { name: queueNameParam };
+    } else {
+      const newCode = generateCode();
+      params.set('code', newCode);
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+      queueRef = { code: newCode };
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -123,7 +196,10 @@
 
     if (sentinel) observer.observe(sentinel);
     loadQueue(true);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      queueStream?.close();
+    };
   });
 
   $: if (view !== lastView) async () =>   {
@@ -155,8 +231,16 @@
         <div>
           <p class="queue-title">Queued songs</p>
           <p class="subtitle">Ready when you are.</p>
+          {#if queueInfo}
+            <p class="subtitle">Code: <span class="queue-code">{queueInfo.code}</span></p>
+          {/if}
         </div>
-        <button class="ghost-button" type="button" on:click={() => (view = 'search')}>Back to search</button>
+        <div class="queue-actions">
+          {#if shareUrl}
+            <button class="ghost-button" type="button" on:click={copyShareLink}>Copy share link</button>
+          {/if}
+          <button class="ghost-button" type="button" on:click={() => (view = 'search')}>Back to search</button>
+        </div>
       </div>
 
       {#if queueError}

@@ -1,10 +1,15 @@
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_GET, require_http_methods
-from django.conf import settings
-from .models import Queue, Song
 import httpx
 import uuid
 import json
+import queue as queue_module
+import threading
+import typing
+
+from django.conf import settings
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.views.decorators.http import require_GET, require_http_methods
+
+from .models import Queue, Song
 
 API_BASE = "https://www.qobuz.com/api.json/0.2"
 DEFAULT_LIMIT = 20
@@ -65,12 +70,50 @@ def _get_queue(request, payload: dict | None = None) -> Queue:
     if queue_id:
         return Queue.objects.get(id=queue_id)
 
+    code = request.GET.get("code") if request else None
+    if not code and payload:
+        code = payload.get("code")
+    if code:
+        name_hint = (request.GET.get("queue") if request else None) or (payload.get("queue") if payload else None)
+        name = (name_hint or f"Queue {code}").strip() or f"Queue {code}"
+        queue, _ = Queue.objects.get_or_create(code=code, defaults={"name": name})
+        return queue
+
     queue_name = request.GET.get("queue") if request else None
     if not queue_name and payload:
         queue_name = payload.get("queue")
     queue_name = (queue_name or "Default").strip() or "Default"
     queue, _ = Queue.objects.get_or_create(name=queue_name)
     return queue
+
+
+_subscribers_lock = threading.Lock()
+_subscribers: dict[int, list[queue_module.Queue]] = {}
+
+
+def _subscribe(queue_id: int) -> queue_module.Queue:
+    q = queue_module.Queue()
+    with _subscribers_lock:
+        _subscribers.setdefault(queue_id, []).append(q)
+    return q
+
+
+def _unsubscribe(queue_id: int, q: queue_module.Queue) -> None:
+    with _subscribers_lock:
+        subs = _subscribers.get(queue_id)
+        if not subs:
+            return
+        if q in subs:
+            subs.remove(q)
+        if not subs:
+            _subscribers.pop(queue_id, None)
+
+
+def _broadcast(queue_id: int, payload: dict) -> None:
+    with _subscribers_lock:
+        subs = list(_subscribers.get(queue_id, []))
+    for sub in subs:
+        sub.put(payload)
 
 
 @require_GET
@@ -124,7 +167,34 @@ def search(request) -> JsonResponse:
 def queue_list(request) -> JsonResponse:
     queue = _get_queue(request)
     items = queue.songs.all()
-    return JsonResponse({"items": [_serialize_queue_item(item) for item in items], "queue_id": queue.id})
+    return JsonResponse(
+        {
+            "items": [_serialize_queue_item(item) for item in items],
+            "queue_id": queue.id,
+            "code": queue.code,
+            "name": queue.name,
+        }
+    )
+
+
+@require_http_methods(["POST"])
+def queue_create(request) -> JsonResponse:
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    name = (payload.get("name") or "Queue").strip() or "Queue"
+    queue, _ = Queue.objects.get_or_create(name=name)
+    return JsonResponse(
+        {
+            "id": queue.id,
+            "queue_id": queue.id,  # keep legacy naming for clients that expect it
+            "code": queue.code,
+            "name": queue.name,
+        },
+        status=201,
+    )
 
 
 @require_http_methods(["POST"])
@@ -153,7 +223,9 @@ def queue_add(request) -> JsonResponse:
         cover=cover,
     )
 
-    return JsonResponse({"item": _serialize_queue_item(item), "queue_id": queue.id}, status=201)
+    serialized = _serialize_queue_item(item)
+    _broadcast(queue.id, {"type": "add", "item": serialized, "queue_id": queue.id})
+    return JsonResponse({"item": serialized, "queue_id": queue.id, "code": queue.code}, status=201)
 
 
 @require_http_methods(["POST", "DELETE"])
@@ -178,4 +250,37 @@ def queue_remove(request) -> JsonResponse:
 
     removed_id = item.id
     item.delete()
-    return JsonResponse({"removed_id": removed_id, "queue_id": queue.id})
+    _broadcast(queue.id, {"type": "remove", "queued_id": removed_id, "queue_id": queue.id})
+    return JsonResponse({"removed_id": removed_id, "queue_id": queue.id, "code": queue.code})
+
+
+@require_GET
+def queue_stream(request) -> StreamingHttpResponse:
+    queue_obj = _get_queue(request)
+
+    def event_stream() -> typing.Iterator[str]:
+        q = _subscribe(queue_obj.id)
+        try:
+            # Send initial metadata so clients know which queue they joined
+            init_payload = {
+                "type": "init",
+                "queue_id": queue_obj.id,
+                "code": queue_obj.code,
+                "name": queue_obj.name,
+            }
+            yield f"data: {json.dumps(init_payload)}\n\n"
+
+            while True:
+                try:
+                    event = q.get(timeout=25)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue_module.Empty:
+                    # Keep-alive to prevent timeouts
+                    yield "event: ping\ndata: {}\n\n"
+        finally:
+            _unsubscribe(queue_obj.id, q)
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"  # nginx friendliness
+    return response
