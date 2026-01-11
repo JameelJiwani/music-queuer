@@ -17,21 +17,6 @@
   let lastQueued = queued;
   let lottieReady = false;
 
-  type LottieAnimationData = {
-    layers?: Array<{ op?: number }>;
-  };
-
-  const getLastVisibleFrame = (data: LottieAnimationData) => {
-    const layerOps = data.layers
-      ?.map((layer) => layer.op)
-      .filter((op): op is number => typeof op === "number");
-    if (!layerOps?.length) return 0;
-    return Math.max(0, Math.max(...layerOps) - 1);
-  };
-
-  const lastVisibleFrame = getLastVisibleFrame(animData as LottieAnimationData);
-  const segmentEndFrame = Math.max(1, lastVisibleFrame + 1);
-
   const handleClick = () => {
     pressed = true;
     if (pressTimeout) clearTimeout(pressTimeout);
@@ -50,7 +35,8 @@
 
   const setStaticFrame = () => {
     if (!animation) return;
-    animation.goToAndStop(queued ? lastVisibleFrame : 0, true);
+    const endFrame = Math.max(0, animation.totalFrames - 1);
+    animation.goToAndStop(queued ? endFrame : 0, true);
     lottieReady = true;
   };
 
@@ -75,11 +61,8 @@
   });
 
   $: if (animation && queued !== lastQueued) {
-    const segment = (queued ? [0, segmentEndFrame] : [segmentEndFrame, 0]) as [
-      number,
-      number,
-    ];
-    animation.playSegments(segment, true);
+    animation.setDirection(queued ? 1 : -1);
+    animation.play();
     lastQueued = queued;
   }
 
