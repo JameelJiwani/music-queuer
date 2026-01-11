@@ -29,9 +29,7 @@
     return Math.max(0, Math.max(...layerOps) - 1);
   };
 
-  const lastVisibleFrame = getLastVisibleFrame(
-    animData as LottieAnimationData
-  );
+  const lastVisibleFrame = getLastVisibleFrame(animData as LottieAnimationData);
   const segmentEndFrame = Math.max(1, lastVisibleFrame + 1);
 
   const handleClick = () => {
@@ -77,9 +75,10 @@
   });
 
   $: if (animation && queued !== lastQueued) {
-    const segment = queued
-      ? [0, segmentEndFrame]
-      : [segmentEndFrame, 0];
+    const segment = (queued ? [0, segmentEndFrame] : [segmentEndFrame, 0]) as [
+      number,
+      number,
+    ];
     animation.playSegments(segment, true);
     lastQueued = queued;
   }
