@@ -60,3 +60,22 @@ export const addQueueItem = async (track: TrackResult, queue?: QueueRef): Promis
 
   return data.item;
 }
+
+export const removeQueueItem = async (item: QueueItem | TrackResult, queue?: QueueRef): Promise<void> => {
+  const res = await fetch(`${API_BASE}/queue/remove`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      queued_id: 'queued_id' in item ? item.queued_id : undefined,
+      track_id: item.id,
+      queue_id: queue?.id,
+      queue: queue?.name
+    })
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to remove song from the queue.');
+  }
+}

@@ -154,3 +154,28 @@ def queue_add(request) -> JsonResponse:
     )
 
     return JsonResponse({"item": _serialize_queue_item(item), "queue_id": queue.id}, status=201)
+
+
+@require_http_methods(["POST", "DELETE"])
+def queue_remove(request) -> JsonResponse:
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    queue = _get_queue(request, payload)
+    queued_id = payload.get("queued_id")
+    track_id = (payload.get("track_id") or payload.get("id") or "").strip() or None
+
+    item = None
+    if queued_id:
+        item = queue.songs.filter(id=queued_id).first()
+    if not item and track_id:
+        item = queue.songs.filter(track_id=track_id).first()
+
+    if not item:
+        return JsonResponse({"error": "Item not found in queue."}, status=404)
+
+    removed_id = item.id
+    item.delete()
+    return JsonResponse({"removed_id": removed_id, "queue_id": queue.id})

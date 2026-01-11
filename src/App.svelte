@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { searchTracks, type TrackResult } from '$lib/api/qobuz';
-  import { addQueueItem, fetchQueue, type QueueItem } from '$lib/api/queue';
+  import { addQueueItem, fetchQueue, removeQueueItem, type QueueItem } from '$lib/api/queue';
+  import TrackList from '$lib/components/TrackList.svelte';
 
   const PAGE_SIZE = 20;
 
@@ -20,6 +21,8 @@
   let debounceHandle: ReturnType<typeof setTimeout> | null = null;
   let clickedId: string | null = null;
   let clickTimeout: ReturnType<typeof setTimeout> | null = null;
+  const queueKey = (track: TrackResult, index: number) => `${track.id}-${index}`;
+  $: queuedIds = queue.map((item) => item.id);
 
   const fetchTracks = async (reset = false) => {
     if (!query.trim()) {
@@ -83,6 +86,18 @@
     clickTimeout = setTimeout(() => {
       if (clickedId === track.id) clickedId = null;
     }, 320);
+  };
+
+  const removeFromQueue = async (track: TrackResult) => {
+    const item = queue.find((queued) => queued.id === track.id);
+    if (!item) return;
+
+    try {
+      await removeQueueItem(item);
+      queue = queue.filter((queued) => queued.queued_id !== item.queued_id);
+    } catch (err) {
+      queueError = err instanceof Error ? err.message : 'Failed to remove song from the queue.';
+    }
   };
 
   const handleInput = (event: Event) => {
@@ -149,21 +164,7 @@
       {:else if queueLoading}
         <div class="loading">Loading queue...</div>
       {:else if queue.length}
-        <div class="list" role="list">
-          {#each queue as track, index (track.id + index)}
-            <article class="item" role="listitem">
-              {#if track.cover}
-                <img class="thumb" src={track.cover} alt={`Album art for ${track.title}`} loading="lazy" />
-              {:else}
-                <div class="thumb" aria-hidden="true"></div>
-              {/if}
-              <div class="meta">
-                <p class="name">{track.title}</p>
-                <p class="artist">{track.artist}{track.album ? ` - ${track.album}` : ''}</p>
-              </div>
-            </article>
-          {/each}
-        </div>
+        <TrackList items={queue} getKey={queueKey} queuedIds={queuedIds} />
       {:else}
         <div class="empty">No songs queued yet. Add some from search.</div>
       {/if}
@@ -189,30 +190,13 @@
       {:else if !tracks.length && !query.trim()}
         <div class="empty">Start typing to find songs from your backend.</div>
       {:else}
-        <div class="list" role="list">
-          {#each tracks as track (track.id)}
-            <article class="item" role="listitem">
-              {#if track.cover}
-                <img class="thumb" src={track.cover} alt={`Album art for ${track.title}`} loading="lazy" />
-              {:else}
-                <div class="thumb" aria-hidden="true"></div>
-              {/if}
-              <div class="meta">
-                <p class="name">{track.title}</p>
-                <p class="artist">{track.artist}{track.album ? ` - ${track.album}` : ''}</p>
-              </div>
-              <button
-                class="cta"
-                class:cta-clicked={clickedId === track.id}
-                type="button"
-                on:click={() => addToQueue(track)}
-                aria-label="Add to queue"
-              >
-                +
-              </button>
-            </article>
-          {/each}
-        </div>
+        <TrackList
+          items={tracks}
+          onAdd={addToQueue}
+          onRemove={removeFromQueue}
+          clickedId={clickedId}
+          queuedIds={queuedIds}
+        />
       {/if}
 
       {#if loading}
