@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
-  import lottie, { type AnimationItem } from 'lottie-web';
-  import animData from '$lib/assets/add-item-animation.json';
-  import type { TrackResult } from '$lib/api/qobuz';
+  import { onDestroy, onMount } from "svelte";
+  import lottie, { type AnimationItem } from "lottie-web";
+  import animData from "$lib/assets/add-item-animation.json";
+  import type { TrackResult } from "$lib/api/qobuz";
 
   export let track: TrackResult;
   export let clickedId: string | null = null;
@@ -35,7 +35,7 @@
 
   const setStaticFrame = () => {
     if (!animation) return;
-    const endFrame = animation.getDuration(true);
+    const endFrame = Math.max(0, animation.totalFrames - 1);
     animation.goToAndStop(queued ? endFrame : 0, true);
     lottieReady = true;
   };
@@ -44,15 +44,15 @@
     if (!lottieContainer) return;
     animation = lottie.loadAnimation({
       container: lottieContainer,
-      renderer: 'svg',
+      renderer: "svg",
       loop: false,
       autoplay: false,
-      animationData: animData
+      animationData: animData,
     });
 
-    animation.addEventListener('DOMLoaded', setStaticFrame);
-    animation.addEventListener('data_ready', setStaticFrame);
-    animation.addEventListener('complete', setStaticFrame);
+    animation.addEventListener("DOMLoaded", setStaticFrame);
+    animation.addEventListener("data_ready", setStaticFrame);
+    animation.addEventListener("complete", setStaticFrame);
 
     return () => {
       animation?.destroy();
@@ -74,13 +74,18 @@
 
 <article class="item" role="listitem">
   {#if track.cover}
-    <img class="thumb" src={track.cover} alt={`Album art for ${track.title}`} loading="lazy" />
+    <img
+      class="thumb"
+      src={track.cover}
+      alt={`Album art for ${track.title}`}
+      loading="lazy"
+    />
   {:else}
     <div class="thumb" aria-hidden="true"></div>
   {/if}
   <div class="meta">
     <p class="name">{track.title}</p>
-    <p class="artist">{track.artist}{track.album ? ` - ${track.album}` : ''}</p>
+    <p class="artist">{track.artist}{track.album ? ` - ${track.album}` : ""}</p>
   </div>
   {#if onAdd || onRemove}
     <button
@@ -89,10 +94,14 @@
       class:cta-pressed={pressed}
       type="button"
       on:click={handleClick}
-      aria-label={queued ? 'Remove from queue' : 'Add to queue'}
+      aria-label={queued ? "Remove from queue" : "Add to queue"}
     >
-      <span class="sr-only">{queued ? 'Remove from queue' : 'Add to queue'}</span>
-      <span class:cta-fallback-hidden={lottieReady} class="cta-fallback">{queued ? '-' : '+'}</span>
+      <span class="sr-only"
+        >{queued ? "Remove from queue" : "Add to queue"}</span
+      >
+      <span class:cta-fallback-hidden={lottieReady} class="cta-fallback"
+        >{queued ? "-" : "+"}</span
+      >
       <span class="cta-lottie" bind:this={lottieContainer}></span>
     </button>
   {/if}
